@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"github.com/go-redis/redis"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
@@ -22,6 +23,7 @@ import (
 var (
 	db    *sql.DB
 	store *sessions.CookieStore
+	cache *redis.Client
 )
 
 type User struct {
@@ -156,11 +158,23 @@ func getUserFromAccount(w http.ResponseWriter, name string) *User {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
-	cnt := new(int)
-	err := row.Scan(cnt)
-	checkErr(err)
-	return *cnt > 0
+	var another interface{} = anotherID
+	i, _ := id.(int)
+	if val, _ := cache.SIsMember(strconv.Itoa(i), another).Result(); val == true {
+		return true
+	} else {
+		row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
+		cnt := new(int)
+		err := row.Scan(cnt)
+		checkErr(err)
+		if *cnt > 0 {
+			cache.SAdd(strconv.Itoa(i), another)
+			cache.SAdd(strconv.Itoa(anotherID), id)
+			return true
+		} else {
+			return false
+		}
+	}
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -708,6 +722,10 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
+		var id interface{} = user.ID
+		var an interface{} = another.ID
+		cache.SAdd(strconv.Itoa(user.ID), an)
+		cache.SAdd(strconv.Itoa(another.ID), id)
 		checkErr(err)
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
@@ -718,9 +736,16 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
 	db.Exec("DELETE FROM entries WHERE id > 500000")
 	db.Exec("DELETE FROM comments WHERE id > 1500000")
+	cache.FlushAll()
 }
 
 func main() {
+	cache = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+
 	host := os.Getenv("ISUCON5_DB_HOST")
 	if host == "" {
 		host = "localhost"
