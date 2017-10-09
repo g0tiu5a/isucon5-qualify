@@ -161,18 +161,21 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	id := session.Values["user_id"]
 	userIdKey := fmt.Sprint(id)
 	anotherIdKey := strconv.Itoa(anotherID)
-	if val, _ := cache.SIsMember(userIdKey, anotherIdKey).Result(); val == true {
-		return true
+	cacheResp := cache.HGet(userIdKey, anotherIdKey)
+	if cacheResp.Err() != nil {
+		return cacheResp.Val() == "1"
 	} else {
 		row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
 		cnt := new(int)
 		err := row.Scan(cnt)
 		checkErr(err)
 		if *cnt > 0 {
-			cache.SAdd(userIdKey, anotherIdKey)
-			cache.SAdd(anotherIdKey, userIdKey)
+			cache.HSet(userIdKey, anotherIdKey, "1")
+			cache.HSet(anotherIdKey, userIdKey, "1")
 			return true
 		} else {
+			cache.HSet(userIdKey, anotherIdKey, "0")
+			cache.HSet(anotherIdKey, userIdKey, "0")
 			return false
 		}
 	}
@@ -725,8 +728,8 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		userIdKey := strconv.Itoa(user.ID)
 		anotherIdKey := strconv.Itoa(another.ID)
-		cache.SAdd(userIdKey, anotherIdKey)
-		cache.SAdd(anotherIdKey, userIdKey)
+		cache.HSet(userIdKey, anotherIdKey, "1")
+		cache.HSet(anotherIdKey, userIdKey, "1")
 		checkErr(err)
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
