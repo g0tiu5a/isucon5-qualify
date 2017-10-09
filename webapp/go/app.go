@@ -162,7 +162,7 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	userIdKey := fmt.Sprint(id)
 	anotherIdKey := strconv.Itoa(anotherID)
 	cacheResp := cache.HGet(userIdKey, anotherIdKey)
-	if cacheResp.Err() != nil {
+	if cacheResp.Err() != redis.Nil {
 		return cacheResp.Val() == "1"
 	} else {
 		row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
