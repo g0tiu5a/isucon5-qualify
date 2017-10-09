@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/go-redis/redis"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/context"
@@ -158,9 +159,9 @@ func getUserFromAccount(w http.ResponseWriter, name string) *User {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	var another interface{} = anotherID
-	i, _ := id.(int)
-	if val, _ := cache.SIsMember(strconv.Itoa(i), another).Result(); val == true {
+	userIdKey := fmt.Sprint(id)
+	anotherIdKey := strconv.Itoa(anotherID)
+	if val, _ := cache.SIsMember(userIdKey, anotherIdKey).Result(); val == true {
 		return true
 	} else {
 		row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
@@ -168,8 +169,8 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 		err := row.Scan(cnt)
 		checkErr(err)
 		if *cnt > 0 {
-			cache.SAdd(strconv.Itoa(i), another)
-			cache.SAdd(strconv.Itoa(anotherID), id)
+			cache.SAdd(userIdKey, anotherIdKey)
+			cache.SAdd(anotherIdKey, userIdKey)
 			return true
 		} else {
 			return false
@@ -722,10 +723,10 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
-		var id interface{} = user.ID
-		var an interface{} = another.ID
-		cache.SAdd(strconv.Itoa(user.ID), an)
-		cache.SAdd(strconv.Itoa(another.ID), id)
+		userIdKey := strconv.Itoa(user.ID)
+		anotherIdKey := strconv.Itoa(another.ID)
+		cache.SAdd(userIdKey, anotherIdKey)
+		cache.SAdd(anotherIdKey, userIdKey)
 		checkErr(err)
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
