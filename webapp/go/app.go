@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/sha512"
 	"database/sql"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -86,19 +88,33 @@ var (
 )
 
 func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
-	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
-FROM users u
-JOIN salts s ON u.id = s.user_id
-WHERE u.email = ? AND u.passhash = SHA2(CONCAT(?, s.salt), 512)`
-	row := db.QueryRow(query, email, passwd)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			checkErr(ErrAuthentication)
+	var user User
+	for userID, _ := range users {
+		u, _ := users[userID]
+		if u.Email == email {
+			user = u
+			break
 		}
+	}
+
+	if user.Email == "" {
+		// Empty result
+		checkErr(ErrAuthentication)
+	}
+
+	// TODO: saltもメモリに載せる?
+	query = `SELECT salt FROM salt s WHERE s.user_id = ?`
+	var salt string
+	err := db.QueryRow(query, user.ID).Scan(&salt)
+	if err != nil {
 		checkErr(err)
 	}
+
+	hash := fmt.Sprintf("%x", sha512.Sum512([]byte(fmt.Sprintf("%s%s", passwd, salt))))
+	if hash != user.PassHash {
+		checkErr(ErrAuthentication)
+	}
+
 	session := getSession(w, r)
 	session.Values["user_id"] = user.ID
 	session.Save(r, w)
@@ -115,15 +131,9 @@ func getCurrentUser(w http.ResponseWriter, r *http.Request) *User {
 	if !ok || userID == nil {
 		return nil
 	}
-	row := db.QueryRow(`SELECT id, account_name, nick_name, email FROM users WHERE id=?`, userID)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
-	if err == sql.ErrNoRows {
-		checkErr(ErrAuthentication)
-	}
-	checkErr(err)
+	user := getUser(w, userID.(int))
 	context.Set(r, "user", user)
-	return &user
+	return user
 }
 
 func authenticated(w http.ResponseWriter, r *http.Request) bool {
