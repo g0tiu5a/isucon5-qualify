@@ -240,6 +240,10 @@ func getTemplatePath(file string) string {
 
 func render(w http.ResponseWriter, r *http.Request, status int, file string, data interface{}) {
 	fmap := template.FuncMap{
+		"getUserFromPrefetch": func(users map[int]User, id int) *User {
+			user, _ := users[id]
+			return &user
+		},
 		"getUser": func(id int) *User {
 			return getUser(w, id)
 		},
