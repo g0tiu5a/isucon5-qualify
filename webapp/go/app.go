@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
@@ -302,6 +303,8 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userIds := make([]int, 0, 40)
+
 	user := getCurrentUser(w, r)
 
 	prof := Profile{}
@@ -339,6 +342,7 @@ LIMIT 10`, user.ID)
 		c := Comment{}
 		checkErr(rows.Scan(&c.ID, &c.EntryID, &c.UserID, &c.Comment, &c.CreatedAt))
 		commentsForMe = append(commentsForMe, c)
+		userIds = append(userIds, c.UserID)
 	}
 	rows.Close()
 
@@ -385,6 +389,7 @@ LIMIT 10`, user.ID)
 			continue
 		}
 		entriesOfFriends = append(entriesOfFriends, Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt})
+		userIds = append(userIds, userID)
 		if len(entriesOfFriends) >= 10 {
 			break
 		}
@@ -414,6 +419,7 @@ LIMIT 10`, user.ID)
 			}
 		}
 		commentsOfFriends = append(commentsOfFriends, c)
+		userIds = append(userIds, userID)
 		if len(commentsOfFriends) >= 10 {
 			break
 		}
@@ -434,8 +440,21 @@ LIMIT 10`, user.ID)
 		fp := Footprint{}
 		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.Updated))
 		footprints = append(footprints, fp)
+		userIds = append(userIds, fp.OwnerID)
 	}
 	rows.Close()
+
+	query := fmt.Sprintf("SELECT * from users where id in (%s)", userIds)
+	rows, err = db.Query(query)
+	if err != sql.ErrNoRows {
+		checkErr(err)
+	}
+	prefetchedUsers := map[int]User{}
+	for rows.Next() {
+		u := User{}
+		checkErr(rows.Scan(&u.ID, &u.AccountName, &u.NickName, &u.Email))
+		prefetchedUsers[u.ID] = u
+	}
 
 	render(w, r, http.StatusOK, "index.html", struct {
 		User              User
@@ -446,8 +465,9 @@ LIMIT 10`, user.ID)
 		CommentsOfFriends []Comment
 		Friends           []Friend
 		Footprints        []Footprint
+		PrefechedUsers    map[int]User
 	}{
-		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friends, footprints,
+		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friends, footprints, prefetchedUsers,
 	})
 }
 
