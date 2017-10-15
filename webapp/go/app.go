@@ -144,14 +144,15 @@ func getUser(w http.ResponseWriter, userID int) *User {
 }
 
 func getUserFromAccount(w http.ResponseWriter, name string) *User {
-	row := db.QueryRow(`SELECT * FROM users WHERE account_name = ?`, name)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email, new(string))
-	if err == sql.ErrNoRows {
-		checkErr(ErrContentNotFound)
+	var u User
+	for id := range users {
+		u = users[id]
+		if u.AccountName == name {
+			return &u
+		}
 	}
-	checkErr(err)
-	return &user
+	u = User{}
+	return &u
 }
 
 func checkFriendFromSlice(friends []int, id int) bool {
