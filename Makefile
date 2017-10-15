@@ -17,7 +17,7 @@ status:
 connect_app:
 	docker-compose exec webapp /bin/bash
 restart:
-	docker-compose run -d --build
+	docker-compose up -d --build
 stop:
 	docker-compose stop
 clean: stop
