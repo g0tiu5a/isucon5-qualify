@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	db    *sql.DB
-	store *sessions.CookieStore
+	db          *sql.DB
+	store       *sessions.CookieStore
+	compiledTpl map[string]*template.Template
 )
 
 type User struct {
@@ -238,42 +239,46 @@ func getTemplatePath(file string) string {
 }
 
 func render(w http.ResponseWriter, r *http.Request, status int, file string, data interface{}) {
-	fmap := template.FuncMap{
-		"getUser": func(id int) *User {
-			return getUser(w, id)
-		},
-		"getCurrentUser": func() *User {
-			return getCurrentUser(w, r)
-		},
-		"isFriend": func(id int) bool {
-			return isFriend(w, r, id)
-		},
-		"prefectures": func() []string {
-			return prefs
-		},
-		"substring": func(s string, l int) string {
-			if len(s) > l {
-				return s[:l]
-			}
-			return s
-		},
-		"split": strings.Split,
-		"getEntry": func(id int) Entry {
-			row := db.QueryRow(`SELECT * FROM entries WHERE id=?`, id)
-			var entryID, userID, private int
-			var body string
-			var createdAt time.Time
-			checkErr(row.Scan(&entryID, &userID, &private, &body, &createdAt))
-			return Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
-		},
-		"numComments": func(id int) int {
-			row := db.QueryRow(`SELECT COUNT(*) AS c FROM comments WHERE entry_id = ?`, id)
-			var n int
-			checkErr(row.Scan(&n))
-			return n
-		},
+	tpl, ok := compiledTpl[file]
+	if !ok {
+		fmap := template.FuncMap{
+			"getUser": func(id int) *User {
+				return getUser(w, id)
+			},
+			"getCurrentUser": func() *User {
+				return getCurrentUser(w, r)
+			},
+			"isFriend": func(id int) bool {
+				return isFriend(w, r, id)
+			},
+			"prefectures": func() []string {
+				return prefs
+			},
+			"substring": func(s string, l int) string {
+				if len(s) > l {
+					return s[:l]
+				}
+				return s
+			},
+			"split": strings.Split,
+			"getEntry": func(id int) Entry {
+				row := db.QueryRow(`SELECT * FROM entries WHERE id=?`, id)
+				var entryID, userID, private int
+				var body string
+				var createdAt time.Time
+				checkErr(row.Scan(&entryID, &userID, &private, &body, &createdAt))
+				return Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+			},
+			"numComments": func(id int) int {
+				row := db.QueryRow(`SELECT COUNT(*) AS c FROM comments WHERE entry_id = ?`, id)
+				var n int
+				checkErr(row.Scan(&n))
+				return n
+			},
+		}
+		tpl = template.Must(template.New(file).Funcs(fmap).ParseFiles(getTemplatePath(file), getTemplatePath("header.html")))
+		compiledTpl[file] = tpl
 	}
-	tpl := template.Must(template.New(file).Funcs(fmap).ParseFiles(getTemplatePath(file), getTemplatePath("header.html")))
 	w.WriteHeader(status)
 	checkErr(tpl.Execute(w, data))
 }
