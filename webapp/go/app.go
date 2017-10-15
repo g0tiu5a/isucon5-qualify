@@ -24,6 +24,7 @@ import (
 var (
 	db    *sql.DB
 	store *sessions.CookieStore
+	users map[int]User
 )
 
 type User struct {
@@ -31,6 +32,7 @@ type User struct {
 	AccountName string
 	NickName    string
 	Email       string
+	PassHash    string
 }
 
 type Profile struct {
@@ -134,13 +136,10 @@ func authenticated(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func getUser(w http.ResponseWriter, userID int) *User {
-	row := db.QueryRow(`SELECT * FROM users WHERE id = ?`, userID)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email, new(string))
-	if err == sql.ErrNoRows {
-		checkErr(ErrContentNotFound)
+	user, ok := users[userID]
+	if ok != true {
+		log.Fatalf("Cannot get user object from memory (userID:%d\n)", userID)
 	}
-	checkErr(err)
 	return &user
 }
 
@@ -729,6 +728,15 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
 	db.Exec("DELETE FROM entries WHERE id > 500000")
 	db.Exec("DELETE FROM comments WHERE id > 1500000")
+
+	rows, _ := db.Query(`SELECT * FROM users`)
+	users = map[int]User{}
+	for rows.Next() {
+		u := User{}
+		checkErr(rows.Scan(&u.ID, &u.AccountName, &u.NickName, &u.Email, &u.PassHash))
+		users[u.ID] = u
+	}
+	rows.Close()
 }
 
 func main() {
