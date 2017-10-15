@@ -24,6 +24,5 @@ services:
     environment:
       - ISUCON5_DB_PASSWORD=isucon5q
       - ISUCON5_DB_HOST=db
-      - ISUCON5_DB_USE_TCP=0
     ports:
       - "8080:8080"
