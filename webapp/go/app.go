@@ -267,8 +267,9 @@ func render(w http.ResponseWriter, r *http.Request, status int, file string, dat
 			var entryID, userID, private int
 			var body string
 			var createdAt time.Time
-			checkErr(row.Scan(&entryID, &userID, &private, &body, &createdAt))
-			return Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+			var title string
+			checkErr(row.Scan(&entryID, &userID, &private, &body, &createdAt, &title))
+			return Entry{id, userID, private == 1, title, body, createdAt}
 		},
 		"numComments": func(id int) int {
 			row := db.QueryRow(`SELECT COUNT(*) AS c FROM comments WHERE entry_id = ?`, id)
@@ -324,8 +325,9 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var id, userID, private int
 		var body string
 		var createdAt time.Time
-		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt))
-		entries = append(entries, Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt})
+		var title string
+		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
+		entries = append(entries, Entry{id, userID, private == 1, title, body, createdAt})
 	}
 	rows.Close()
 
@@ -485,8 +487,9 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		var id, userID, private int
 		var body string
 		var createdAt time.Time
-		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt))
-		entry := Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+		var title string
+		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
+		entry := Entry{id, userID, private == 1, title, body, createdAt}
 		entries = append(entries, entry)
 	}
 	rows.Close()
@@ -548,8 +551,9 @@ func ListEntries(w http.ResponseWriter, r *http.Request) {
 		var id, userID, private int
 		var body string
 		var createdAt time.Time
-		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt))
-		entry := Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+		var title string
+		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
+		entry := Entry{id, userID, private == 1, title, body, createdAt}
 		entries = append(entries, entry)
 	}
 	rows.Close()
@@ -572,12 +576,13 @@ func GetEntry(w http.ResponseWriter, r *http.Request) {
 	var id, userID, private int
 	var body string
 	var createdAt time.Time
-	err := row.Scan(&id, &userID, &private, &body, &createdAt)
+	var title string
+	err := row.Scan(&id, &userID, &private, &body, &createdAt, &title)
 	if err == sql.ErrNoRows {
 		checkErr(ErrContentNotFound)
 	}
 	checkErr(err)
-	entry := Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+	entry := Entry{id, userID, private == 1, title, body, createdAt}
 	owner := getUser(w, entry.UserID)
 	if entry.Private {
 		if !permitted(w, r, owner.ID) {
@@ -637,13 +642,14 @@ func PostComment(w http.ResponseWriter, r *http.Request) {
 	var id, userID, private int
 	var body string
 	var createdAt time.Time
-	err := row.Scan(&id, &userID, &private, &body, &createdAt)
+	var title string
+	err := row.Scan(&id, &userID, &private, &body, &createdAt, &title)
 	if err == sql.ErrNoRows {
 		checkErr(ErrContentNotFound)
 	}
 	checkErr(err)
 
-	entry := Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+	entry := Entry{id, userID, private == 1, title, body, createdAt}
 	owner := getUser(w, entry.UserID)
 	if entry.Private {
 		if !permitted(w, r, owner.ID) {
