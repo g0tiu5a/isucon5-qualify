@@ -25,10 +25,15 @@ services:
     restart: always
     links:
       - db
+      - redis
     external_links:
       - db:db
+      - redis:redis
     environment:
       - ISUCON5_DB_PASSWORD=isucon5q
       - ISUCON5_DB_HOST=db
+      - ISUCON5_DB_USE_TCP=1
+      - ISUCON5_REDIS_USE_TCP=1
+      - ISUCON5_REDIS_HOST=redis
     ports:
       - "8080:8080"

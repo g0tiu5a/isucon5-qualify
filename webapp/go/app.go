@@ -3,11 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
-	redis "github.com/garyburd/redigo/redis"
-	"github.com/go-sql-driver/mysql"
-	"github.com/gorilla/context"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -19,13 +15,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	redis "github.com/garyburd/redigo/redis"
+	"github.com/go-sql-driver/mysql"
+	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 var (
 	redisConn redis.Conn
 	db        *sql.DB
 	store     *sessions.CookieStore
-	users map[int]User
+	users     map[int]User
 )
 
 type User struct {
@@ -767,8 +769,8 @@ func main() {
 	if ssecret == "" {
 		ssecret = "beermoris"
 	}
-	usetcp := os.Getenv("ISUCON5_DB_USE_TCP")
-	if usetcp == "0" {
+	dbUseTcp := os.Getenv("ISUCON5_DB_USE_TCP")
+	if dbUseTcp == "0" {
 		db, err = sql.Open("mysql", user+":"+password+"@unix(/var/run/mysqld/mysqld.sock)/"+dbname+"?loc=Local&parseTime=true")
 		if err != nil {
 			log.Fatalf("Failed to connect to DB with Unix domain socket: %s.", err.Error())
@@ -781,9 +783,22 @@ func main() {
 	}
 	defer db.Close()
 
-	redisConn, err = redis.Dial("unix", "/var/run/redis/redis.sock")
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %s.", err.Error())
+	redisHost := os.Getenv("ISUCON5_REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+
+	redisUseTcp := os.Getenv("ISUCON5_REDIS_USE_TCP")
+	if redisUseTcp == "0" {
+		redisConn, err = redis.Dial("unix", "/var/run/redis/redis.sock")
+		if err != nil {
+			log.Fatalf("Failed to connect to Redis with Unix domain socket: %s.", err.Error())
+		}
+	} else {
+		redisConn, err = redis.Dial("tcp", fmt.Sprintf("%v:6379", redisHost))
+		if err != nil {
+			log.Fatalf("Failed to connect to Redis with TCP: %s.", err.Error())
+		}
 	}
 	defer redisConn.Close()
 
