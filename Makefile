@@ -10,6 +10,7 @@ build:
 
 start: build
 	docker-compose up -d
+	curl http://localhost:8080/initialize
 log:
 	docker-compose logs
 status:
@@ -17,7 +18,7 @@ status:
 connect_app:
 	docker-compose exec webapp /bin/bash
 restart:
-	docker-compose run -d --build
+	docker-compose up -d --build
 stop:
 	docker-compose stop
 clean: stop
