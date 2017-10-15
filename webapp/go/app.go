@@ -806,7 +806,6 @@ func main() {
 
 	r.HandleFunc("/initialize", myHandler(GetInitialize))
 	r.HandleFunc("/", myHandler(GetIndex))
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../static")))
 
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
