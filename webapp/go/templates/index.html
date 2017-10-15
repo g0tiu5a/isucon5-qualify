@@ -1,4 +1,5 @@
 {{ template "header.html" }}
+{{ $prefetched := .PrefetchedUsers }}
 <h2>ISUxi index</h2>
 <div class="row panel panel-primary" id="prof">
   <div class="col-md-12 panel-title" id="prof-nickname">{{ .User.NickName }}</div>
@@ -34,7 +35,7 @@
     <div id="footprints">
       <ul class="list-group">
         {{ range .Footprints }}
-        {{ $owner := getUserFromPrefetch .PrefetchedUsers .OwnerID }}
+        {{ $owner := getUserFromPrefetch $prefetched .OwnerID }}
         <li class="list-group-item footprints-footprint">{{ .CreatedAt.Format "2006-01-02 15:04:05" }}: <a href="/profile/{{ $owner.AccountName }}">{{ $owner.NickName }}さん</a></li>
         {{ end }}
       </ul>
@@ -49,7 +50,7 @@
       {{ range .CommentsForMe }}
       <div class="comments-comment">
         <ul class="list-group">
-          {{ $commentUser := getUserFromPrefetch .PrefetchedUsers .UserID }}
+          {{ $commentUser := getUserFromPrefetch $prefetched .UserID }}
           <li class="list-group-item comment-owner"><a href="/profile/{{ $commentUser.AccountName}}">{{ $commentUser.NickName }}さん</a>:</li>
           <li class="list-group-item comment-comment">{{ if ge (len .Comment) 30 }}{{ substring .Comment 27 }}...{{ else }}{{ .Comment }}{{ end }}</li>
           <li class="list-group-item comment-created-at">投稿時刻:{{ .CreatedAt.Format "2006-01-02 15:04:05" }}</li>
@@ -65,7 +66,7 @@
       {{ range .EntriesOfFriends }}
       <div class="friend-entry">
         <ul class="list-group">
-          {{ $entryOwner := getUserFromPrefetch .PrefetchedUsers .UserID }}
+          {{ $entryOwner := getUserFromPrefetch $prefetched .UserID }}
           <li class="list-group-item entry-owner"><a href="/diary/entries/{{ $entryOwner.AccountName }}">{{ $entryOwner.NickName }}さん</a>:</li>
           <li class="list-group-item entry-title"><a href="/diary/entry/{{ .ID }}">{{ .Title }}</a></li>
           <li class="list-group-item entry-created-at">投稿時刻:{{ .CreatedAt.Format "2006-01-02 15:04:05" }}</li>
@@ -81,7 +82,7 @@
       {{ range .CommentsOfFriends }}
       <div class="friend-comment">
         <ul class="list-group">
-          {{ $commentOwner := getUserFromPrefetch .PrefetchedUsers .UserID }}
+          {{ $commentOwner := getUserFromPrefetch $prefetched .UserID }}
           {{ $entry := getEntry .EntryID }}
           {{ $entryOwner := getUser $entry.UserID }}
           <li class="list-group-item comment-from-to"><a href="/profile/{{ $commentOwner.AccountName }}">{{ $commentOwner.NickName }}さん</a>から<a href="/profile/{{ $entryOwner.AccountName }}">{{ $entryOwner.NickName }}さん</a>へのコメント:</li>
