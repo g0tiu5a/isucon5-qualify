@@ -444,7 +444,7 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	query := fmt.Sprintf("SELECT * from users where id in (%s)", userIds)
+	query := fmt.Sprintf("SELECT * from users where id in (%d)", userIds)
 	rows, err = db.Query(query)
 	if err != sql.ErrNoRows {
 		checkErr(err)
