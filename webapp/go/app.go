@@ -115,7 +115,7 @@ func getCurrentUser(w http.ResponseWriter, r *http.Request) *User {
 	}
 	row := db.QueryRow(`SELECT id, account_name, nick_name, email FROM users WHERE id=?`, userID)
 	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email, new(string))
+	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
 	if err == sql.ErrNoRows {
 		checkErr(ErrAuthentication)
 	}
@@ -444,7 +444,7 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	query := fmt.Sprintf("SELECT * from users where id in (%s)", strings.Join(userIds, ","))
+	query := fmt.Sprintf("SELECT id, account_name, nick_name, email from users where id in (%s)", strings.Join(userIds, ","))
 	rows, err = db.Query(query)
 	if err != sql.ErrNoRows {
 		checkErr(err)
