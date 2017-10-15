@@ -115,7 +115,7 @@ func getCurrentUser(w http.ResponseWriter, r *http.Request) *User {
 	}
 	row := db.QueryRow(`SELECT id, account_name, nick_name, email FROM users WHERE id=?`, userID)
 	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
+	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email, new(string))
 	if err == sql.ErrNoRows {
 		checkErr(ErrAuthentication)
 	}
