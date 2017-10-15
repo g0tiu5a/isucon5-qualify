@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	redis "github.com/garyburd/redigo/redis"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
@@ -21,8 +22,9 @@ import (
 )
 
 var (
-	db    *sql.DB
-	store *sessions.CookieStore
+	redisConn redis.Conn
+	db        *sql.DB
+	store     *sessions.CookieStore
 )
 
 type User struct {
@@ -762,6 +764,12 @@ func main() {
 		log.Fatalf("Failed to connect to DB: %s.", err.Error())
 	}
 	defer db.Close()
+
+	redisConn, err = redis.Dial("unix", "/var/run/redis/redis.sock")
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %s.", err.Error())
+	}
+	defer redisConn.Close()
 
 	store = sessions.NewCookieStore([]byte(ssecret))
 
