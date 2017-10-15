@@ -34,7 +34,7 @@
     <div id="footprints">
       <ul class="list-group">
         {{ range .Footprints }}
-        {{ $ownerNickName := getUserFromPrefetch .PrefetchedUsers .OwnerID }}
+        {{ $owner := getUserFromPrefetch .PrefetchedUsers .OwnerID }}
         <li class="list-group-item footprints-footprint">{{ .CreatedAt.Format "2006-01-02 15:04:05" }}: <a href="/profile/{{ $owner.AccountName }}">{{ $owner.NickName }}さん</a></li>
         {{ end }}
       </ul>
