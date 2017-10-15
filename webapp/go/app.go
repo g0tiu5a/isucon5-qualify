@@ -3,10 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"github.com/go-sql-driver/mysql"
-	"github.com/gorilla/context"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	"html/template"
 	"log"
 	"net/http"
@@ -18,6 +14,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 var (
@@ -756,11 +757,17 @@ func main() {
 	if ssecret == "" {
 		ssecret = "beermoris"
 	}
-
-	// db, err = sql.Open("mysql", user+":"+password+"@tcp("+host+":"+strconv.Itoa(port)+")/"+dbname+"?loc=Local&parseTime=true")
-	db, err = sql.Open("mysql", user+":"+password+"@unix(/var/run/mysqld/mysqld.sock)/"+dbname+"?loc=Local&parseTime=true")
-	if err != nil {
-		log.Fatalf("Failed to connect to DB: %s.", err.Error())
+	usetcp := os.Getenv("ISUCON5_DB_USE_TCP")
+	if usetcp == "0" {
+		db, err = sql.Open("mysql", user+":"+password+"@unix(/var/run/mysqld/mysqld.sock)/"+dbname+"?loc=Local&parseTime=true")
+		if err != nil {
+			log.Fatalf("Failed to connect to DB with Unix domain socket: %s.", err.Error())
+		}
+	} else {
+		db, err = sql.Open("mysql", user+":"+password+"@tcp("+host+":"+strconv.Itoa(port)+")/"+dbname+"?loc=Local&parseTime=true")
+		if err != nil {
+			log.Fatalf("Failed to connect to DB with TCP: %s.", err.Error())
+		}
 	}
 	defer db.Close()
 
