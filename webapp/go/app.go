@@ -103,7 +103,7 @@ func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) 
 	}
 
 	// TODO: saltもメモリに載せる?
-	query := `SELECT salt FROM salt s WHERE s.user_id = ?`
+	query = `SELECT salt FROM salt s WHERE s.user_id = ?`
 	var salt string
 	err := db.QueryRow(query, user.ID).Scan(&salt)
 	if err != nil {
