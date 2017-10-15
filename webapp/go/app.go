@@ -274,7 +274,9 @@ func render(w http.ResponseWriter, r *http.Request, status int, file string, dat
 		},
 	}
 	tpl := template.Must(template.New(file).Funcs(fmap).ParseFiles(getTemplatePath(file), getTemplatePath("header.html")))
-	w.WriteHeader(status)
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
 	checkErr(tpl.Execute(w, data))
 }
 
