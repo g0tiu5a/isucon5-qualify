@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	db          *sql.DB
-	store       *sessions.CookieStore
-	compiledTpl map[string]*template.Template
+	db    *sql.DB
+	store *sessions.CookieStore
 )
+var compiledTpl = map[string]*template.Template{}
 
 type User struct {
 	ID          int
