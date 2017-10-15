@@ -469,7 +469,7 @@ LIMIT 10`, user.ID)
 		CommentsOfFriends []Comment
 		Friends           []Friend
 		Footprints        []Footprint
-		PrefechedUsers    map[int]User
+		PrefetchedUsers   map[int]User
 	}{
 		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friends, footprints, prefetchedUsers,
 	})
