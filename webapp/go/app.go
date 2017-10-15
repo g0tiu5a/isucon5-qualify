@@ -411,8 +411,9 @@ LIMIT 10`, user.ID)
 		var id, userID, private int
 		var body string
 		var createdAt time.Time
-		checkErr(row.Scan(&id, &userID, &private, &body, &createdAt))
-		entry := Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt}
+		var title string
+		checkErr(row.Scan(&id, &userID, &private, &body, &createdAt, &title))
+		entry := Entry{id, userID, private == 1, title, body, createdAt}
 		if entry.Private {
 			if !permitted(w, r, entry.UserID) {
 				continue
