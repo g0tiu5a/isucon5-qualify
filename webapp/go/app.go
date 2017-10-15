@@ -18,11 +18,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 var (
 	db    *sql.DB
 	store *sessions.CookieStore
+	users map[int]User
 )
 
 type User struct {
@@ -30,6 +36,7 @@ type User struct {
 	AccountName string
 	NickName    string
 	Email       string
+	PassHash    string
 }
 
 type Profile struct {
@@ -728,6 +735,15 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
 	db.Exec("DELETE FROM entries WHERE id > 500000")
 	db.Exec("DELETE FROM comments WHERE id > 1500000")
+
+	rows, _ := db.Query(`SELECT * FROM users`)
+	users = map[int]User{}
+	for rows.Next() {
+		u := User{}
+		checkErr(rows.Scan(&u.ID, &u.AccountName, &u.NickName, &u.Email, &u.PassHash))
+		users[u.ID] = u
+	}
+	rows.Close()
 }
 
 func main() {
