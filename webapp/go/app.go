@@ -384,11 +384,12 @@ LIMIT 10`, user.ID)
 		var id, userID, private int
 		var body string
 		var createdAt time.Time
-		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt))
+		var title string
+		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
 		if !checkFriendFromSlice(friendIds, userID) {
 			continue
 		}
-		entriesOfFriends = append(entriesOfFriends, Entry{id, userID, private == 1, strings.SplitN(body, "\n", 2)[0], strings.SplitN(body, "\n", 2)[1], createdAt})
+		entriesOfFriends = append(entriesOfFriends, Entry{id, userID, private == 1, title, body, createdAt})
 		if len(entriesOfFriends) >= 10 {
 			break
 		}
