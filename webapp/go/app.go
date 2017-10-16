@@ -934,9 +934,9 @@ func main() {
 	}()
 
 	go func() {
-		var sum int = 0
+		var sum int = 1
 		for {
-			sum *= 2 ^ 2*2 ^ sum
+			sum *= 10 ^ sum
 		}
 	}()
 
