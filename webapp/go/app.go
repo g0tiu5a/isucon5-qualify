@@ -116,12 +116,11 @@ func AddFootprintCache(footprint Footprint) {
 	defer redisConn.Close()
 
 	FootprintLock.Lock()
-	defer FootprintLock.Unlock()
-
-	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1))
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1, "withscores"))
 	if err != nil {
 		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
 	}
+	FootprintLock.Unlock()
 
 	var maxCreatedAt time.Time = footprint.CreatedAt
 	for _, fpJson := range fps {
@@ -146,12 +145,11 @@ func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
 	defer redisConn.Close()
 
 	FootprintLock.RLock()
-	defer FootprintLock.RUnlock()
-
-	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1, "withscores"))
 	if err != nil {
 		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
 	}
+	FootprintLock.RUnlock()
 
 	for _, fpJson := range fps {
 		fp := Footprint{}
@@ -483,6 +481,7 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
+	// NOTE: relations 改善部分
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
