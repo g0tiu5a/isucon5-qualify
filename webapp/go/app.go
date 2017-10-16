@@ -29,6 +29,7 @@ var (
 	db        *sql.DB
 	store     *sessions.CookieStore
 	users     map[int]User
+	salts     map[int]string
 )
 
 type User struct {
@@ -813,6 +814,16 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		u := User{}
 		checkErr(rows.Scan(&u.ID, &u.AccountName, &u.NickName, &u.Email, &u.PassHash))
 		users[u.ID] = u
+	}
+	rows.Close()
+
+	rows, _ = db.Query(`SELECT * FROM salts`)
+	salts = map[int]string{}
+	for rows.Next() {
+		var id int
+		var s string
+		checkErr(rows.Scan(&id, &s))
+		salts[id] = s
 	}
 	rows.Close()
 }
