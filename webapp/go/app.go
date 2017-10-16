@@ -117,7 +117,7 @@ func AddFootprintCache(footprint Footprint) {
 
 	footprintJson, err := json.Marshal(footprint)
 	if err != nil {
-		log.Fatalf("Failed to marshalize footprint: %s\n", err.Error())
+		log.Fatalf("Failed to marshalize footprint: <%v> %s\n", footprint.CreatedAt, err.Error())
 	}
 	redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), -maxCreatedAt, footprintJson)
 }
@@ -513,23 +513,6 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	// rows, err = db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) AS updated
-	// FROM footprints
-	// WHERE user_id = ?
-	// GROUP BY user_id, owner_id, DATE(created_at)
-	// ORDER BY updated DESC
-	// LIMIT 10`, user.ID)
-	// if err != sql.ErrNoRows {
-	// 	checkErr(err)
-	// }
-	// footprints := make([]Footprint, 0, 10)
-	// for rows.Next() {
-	// 	fp := Footprint{}
-	// 	checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
-	// 	footprints = append(footprints, fp)
-	// }
-	// rows.Close()
-
 	footprints := FetchFootprintsCache(user.ID, 10)
 
 	render(w, r, http.StatusOK, "index.html", struct {
@@ -756,23 +739,6 @@ func GetFootprints(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	// footprints := make([]Footprint, 0, 50)
-	// rows, err := db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) as updated
-	// FROM footprints
-	// WHERE user_id = ?
-	// GROUP BY user_id, owner_id, DATE(created_at)
-	// ORDER BY updated DESC
-	// LIMIT 50`, user.ID)
-	// if err != sql.ErrNoRows {
-	// 	checkErr(err)
-	// }
-	// for rows.Next() {
-	// 	fp := Footprint{}
-	// 	checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
-	// 	footprints = append(footprints, fp)
-	// }
-	// rows.Close()
-
 	footprints := FetchFootprintsCache(user.ID, 50)
 
 	render(w, r, http.StatusOK, "footprints.html", struct{ Footprints []Footprint }{footprints})
