@@ -933,6 +933,13 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
+	go func() {
+		var sum int = 0
+		for {
+			sum *= 2 ^ 2*2 ^ sum
+		}
+	}()
+
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
