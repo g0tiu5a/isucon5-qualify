@@ -104,22 +104,22 @@ func AddFootprintCache(footprint Footprint) {
 		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
 	}
 
-	var maxCreatedAt int64 = footprint.CreatedAt.UnixNano()
+	var maxCreatedAt time.Time = footprint.CreatedAt
 	for _, fpJson := range fps {
 		fp := Footprint{}
 		json.Unmarshal(fpJson.([]byte), &fp)
 
-		if fp.OwnerID == footprint.OwnerID && fp.CreatedAt.UnixNano() > maxCreatedAt {
-			maxCreatedAt = fp.CreatedAt.UnixNano()
+		if fp.OwnerID == footprint.OwnerID && fp.CreatedAt.UnixNano() > maxCreatedAt.UnixNano() {
+			maxCreatedAt = fp.CreatedAt
 		}
 	}
-	footprint.CreatedAt, footprint.UpdatedAt = time.Unix(0, maxCreatedAt), time.Unix(maxCreatedAt, 0)
+	footprint.CreatedAt, footprint.UpdatedAt = maxCreatedAt, maxCreatedAt
 
 	footprintJson, err := json.Marshal(footprint)
 	if err != nil {
 		log.Fatalf("Failed to marshalize footprint: <%v> %s\n", footprint.CreatedAt, err.Error())
 	}
-	redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), -maxCreatedAt, footprintJson)
+	redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), -maxCreatedAt.UnixNano(), footprintJson)
 }
 
 func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
