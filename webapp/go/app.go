@@ -832,7 +832,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	db.Exec("DELETE FROM comments WHERE id > 1500000")
 
 	loadAof := os.Getenv("ISUCON5_REDIS_LOAD_AOF")
-	if loadAof == "1" {
+	if loadAof == "" {
 		LoadRedisAof()
 	}
 
@@ -883,7 +883,7 @@ func main() {
 		ssecret = "beermoris"
 	}
 	dbUseTcp := os.Getenv("ISUCON5_DB_USE_TCP")
-	if dbUseTcp == "0" {
+	if dbUseTcp == "" {
 		db, err = sql.Open("mysql", user+":"+password+"@unix(/var/run/mysqld/mysqld.sock)/"+dbname+"?loc=Local&parseTime=true")
 		if err != nil {
 			log.Fatalf("Failed to connect to DB with Unix domain socket: %s.", err.Error())
@@ -902,7 +902,7 @@ func main() {
 	}
 
 	redisUseTcp := os.Getenv("ISUCON5_REDIS_USE_TCP")
-	if redisUseTcp == "0" {
+	if redisUseTcp == "" {
 		redisConn, err = redis.Dial("unix", "/var/run/redis/redis.sock")
 		if err != nil {
 			log.Fatalf("Failed to connect to Redis with Unix domain socket: %s.", err.Error())
