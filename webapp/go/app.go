@@ -365,10 +365,13 @@ LIMIT 10`, user.ID)
 			friendsMap[friendID] = createdAt
 		}
 	}
-	friends := make([]Friend, 0, len(friendsMap))
+
+	row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
+	var friendsCnt int
+	checkErr(row.Scan(&friendsCnt))
+
 	friendIds := make([]int, 0, len(friendsMap))
-	for key, val := range friendsMap {
-		friends = append(friends, Friend{key, val})
+	for key := range friendsMap {
 		friendIds = append(friendIds, key)
 	}
 	rows.Close()
@@ -448,10 +451,10 @@ LIMIT 10`, user.ID)
 		CommentsForMe     []Comment
 		EntriesOfFriends  []Entry
 		CommentsOfFriends []Comment
-		Friends           []Friend
+		FriendsCnt        int
 		Footprints        []Footprint
 	}{
-		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friends, footprints,
+		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friendsCnt, footprints,
 	})
 }
 
