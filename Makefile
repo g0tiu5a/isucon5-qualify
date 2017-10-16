@@ -32,5 +32,7 @@ import_dump: create_schema
 	mysql -uroot -p$(MYSQL_PASSWORD) $(MYSQL_DATABASE) -h 127.0.0.1 -P $(MYSQL_LOCALPORT) < ./webapp/sql/isucon5q.dev.sql
 create_user: import_dump
 	mysql -uroot -p$(MYSQL_PASSWORD) $(MYSQL_DATABASE) -h 127.0.0.1 -P $(MYSQL_LOCALPORT) < ./webapp/sql/create_user.sql
-connect_db: create_user
+alter_table: create_user
+	mysql -uroot -p$(MYSQL_PASSWORD) $(MYSQL_DATABASE) -h 127.0.0.1 -P $(MYSQL_LOCALPORT) < ./webapp/sql/alterdb.sql
+connect_db: alter_table
 	mysql -uroot -p$(MYSQL_PASSWORD) $(MYSQL_DATABASE) -h 127.0.0.1 -P $(MYSQL_LOCALPORT)
