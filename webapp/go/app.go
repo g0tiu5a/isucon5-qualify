@@ -116,7 +116,7 @@ func AddFootprintCache(footprint Footprint) {
 	defer redisConn.Close()
 
 	FootprintLock.Lock()
-	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1, "withscores"))
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1))
 	if err != nil {
 		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
 	}
@@ -145,7 +145,7 @@ func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
 	defer redisConn.Close()
 
 	FootprintLock.RLock()
-	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1, "withscores"))
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
 	if err != nil {
 		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
 	}
