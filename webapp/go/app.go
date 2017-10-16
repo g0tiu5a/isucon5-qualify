@@ -225,15 +225,13 @@ func getUser(w http.ResponseWriter, userID int) *User {
 }
 
 func getUserFromAccount(w http.ResponseWriter, name string) *User {
-	var u User
-	for id := range users {
-		u = users[id]
-		if u.AccountName == name {
-			return &u
+	for _, user := range users {
+		if user.AccountName == name {
+			return &user
 		}
 	}
-	u = User{}
-	return &u
+	user := User{}
+	return &user
 }
 
 func checkFriendFromSlice(friends []int, id int) bool {
