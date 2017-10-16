@@ -841,7 +841,7 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		)
 		checkErr(err)
 		AddRelationCache(relation)
-		relation.One, relation.Another = relation.Another, relation.One
+		relation.One, relation.Another = another.ID, user.ID
 		AddRelationCache(relation)
 
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
