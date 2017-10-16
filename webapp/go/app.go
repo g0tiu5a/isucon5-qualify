@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -71,10 +72,15 @@ type Friend struct {
 }
 
 type Footprint struct {
-	UserID    int
-	OwnerID   int
-	CreatedAt time.Time
-	Updated   time.Time
+	UserID    int       `json:"user_id"`
+	OwnerID   int       `json:"owner_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type FootprintGroup struct {
+	UserID  int
+	OwnerID int
 }
 
 var prefs = []string{"未入力",
@@ -87,6 +93,78 @@ var (
 	ErrPermissionDenied = errors.New("Permission denied.")
 	ErrContentNotFound  = errors.New("Content not found.")
 )
+
+// ===== Redis Seed Start =====
+func InitializeFootprints() {
+	var isNotRequired map[FootprintGroup]bool = map[FootprintGroup]bool{}
+	var maxCreatedAt map[FootprintGroup]time.Time = map[FootprintGroup]time.Time{}
+	var fps []Footprint
+
+	rows, err := db.Query(`SELECT user_id, owner_id, created_at FROM footprints`)
+	if err != sql.ErrNoRows {
+		checkErr(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		fp := Footprint{}
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt))
+
+		group := FootprintGroup{
+			UserID:  fp.UserID,
+			OwnerID: fp.OwnerID,
+		}
+
+		if fp.CreatedAt.UnixNano() > maxCreatedAt[group].UnixNano() {
+			maxCreatedAt[group] = fp.CreatedAt
+		}
+
+		fps = append(fps, fp)
+	}
+
+	for _, fp := range fps {
+		group := FootprintGroup{
+			UserID:  fp.UserID,
+			OwnerID: fp.OwnerID,
+		}
+
+		if isNotRequired[group] {
+			continue
+		}
+		isNotRequired[group] = true
+
+		var tmpFp Footprint
+		tmpFp = Footprint{
+			UserID:    fp.UserID,
+			OwnerID:   fp.OwnerID,
+			CreatedAt: maxCreatedAt[group],
+			UpdatedAt: maxCreatedAt[group],
+		}
+
+		tmpFpJson, err := json.Marshal(tmpFp)
+		if err != nil {
+			log.Fatalf("Can not marshal footprint to json.: %s\n", err.Error())
+		}
+		redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", tmpFp.UserID), -tmpFp.CreatedAt.UnixNano(), tmpFpJson)
+	}
+}
+
+func FetchFootprints(userId int, limit int) (footprints []Footprint) {
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
+	if err != nil {
+		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
+	}
+
+	for _, fpJson := range fps {
+		fp := Footprint{}
+		json.Unmarshal(fpJson.([]byte), &fp)
+		footprints = append(footprints, fp)
+	}
+
+	return
+}
+
+// ===== Redis Seed End =====
 
 func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
 	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
@@ -439,7 +517,7 @@ LIMIT 10`, user.ID)
 	footprints := make([]Footprint, 0, 10)
 	for rows.Next() {
 		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.Updated))
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
 		footprints = append(footprints, fp)
 	}
 	rows.Close()
@@ -676,7 +754,7 @@ LIMIT 50`, user.ID)
 	}
 	for rows.Next() {
 		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.Updated))
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
 		footprints = append(footprints, fp)
 	}
 	rows.Close()
