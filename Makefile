@@ -10,7 +10,7 @@ build:
 
 start: build
 	docker-compose up -d
-	curl http://localhost:8080/initialize
+	sleep 1 && curl http://localhost:8080/initialize
 log:
 	docker-compose logs
 status:

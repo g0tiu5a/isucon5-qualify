@@ -1,8 +1,15 @@
 FROM golang:1.9
 
+RUN go get github.com/derekparker/delve/cmd/dlv
+RUN go get golang.org/x/tools/cmd/goimports
+RUN go get github.com/garyburd/redigo/redis
+RUN go get github.com/go-sql-driver/mysql
+RUN go get github.com/gorilla/context
+RUN go get github.com/gorilla/mux
+RUN go get github.com/gorilla/sessions
+
 ADD ./webapp /go/src/g0tiu5a/webapp
 WORKDIR /go/src/g0tiu5a/webapp/go
-RUN go get
 
 EXPOSE 8080
 CMD [ "go", "run", "app.go" ]
