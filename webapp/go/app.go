@@ -11,6 +11,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
 	"path"
 	"runtime"
 	"sort"
@@ -97,61 +98,31 @@ var (
 )
 
 // ===== Redis Seed Start =====
-func InitializeFootprints() {
-	var isNotRequired map[FootprintGroup]bool = map[FootprintGroup]bool{}
-	var maxCreatedAt map[FootprintGroup]time.Time = map[FootprintGroup]time.Time{}
-	var fps []Footprint
-
-	rows, err := db.Query(`SELECT user_id, owner_id, created_at FROM footprints`)
-	if err != sql.ErrNoRows {
-		checkErr(err)
+func AddFootprintCache(footprint Footprint) {
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1))
+	if err != nil {
+		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
 	}
-	defer rows.Close()
 
-	for rows.Next() {
+	var maxCreatedAt int64 = footprint.CreatedAt.UnixNano()
+	for _, fpJson := range fps {
 		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt))
+		json.Unmarshal(fpJson.([]byte), &fp)
 
-		group := FootprintGroup{
-			UserID:  fp.UserID,
-			OwnerID: fp.OwnerID,
+		if fp.OwnerID == footprint.OwnerID && fp.CreatedAt.UnixNano() > maxCreatedAt {
+			maxCreatedAt = fp.CreatedAt.UnixNano()
 		}
-
-		if fp.CreatedAt.UnixNano() > maxCreatedAt[group].UnixNano() {
-			maxCreatedAt[group] = fp.CreatedAt
-		}
-
-		fps = append(fps, fp)
 	}
+	footprint.CreatedAt, footprint.UpdatedAt = time.Unix(0, maxCreatedAt), time.Unix(maxCreatedAt, 0)
 
-	for _, fp := range fps {
-		group := FootprintGroup{
-			UserID:  fp.UserID,
-			OwnerID: fp.OwnerID,
-		}
-
-		if isNotRequired[group] {
-			continue
-		}
-		isNotRequired[group] = true
-
-		var tmpFp Footprint
-		tmpFp = Footprint{
-			UserID:    fp.UserID,
-			OwnerID:   fp.OwnerID,
-			CreatedAt: maxCreatedAt[group],
-			UpdatedAt: maxCreatedAt[group],
-		}
-
-		tmpFpJson, err := json.Marshal(tmpFp)
-		if err != nil {
-			log.Fatalf("Can not marshal footprint to json.: %s\n", err.Error())
-		}
-		redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", tmpFp.UserID), -tmpFp.CreatedAt.UnixNano(), tmpFpJson)
+	footprintJson, err := json.Marshal(footprint)
+	if err != nil {
+		log.Fatalf("Failed to marshalize footprint: %s\n", err.Error())
 	}
+	redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), -maxCreatedAt, footprintJson)
 }
 
-func FetchFootprints(userId int, limit int) (footprints []Footprint) {
+func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
 	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
 	if err != nil {
 		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
@@ -160,10 +131,31 @@ func FetchFootprints(userId int, limit int) (footprints []Footprint) {
 	for _, fpJson := range fps {
 		fp := Footprint{}
 		json.Unmarshal(fpJson.([]byte), &fp)
+
+		// Datetime -> Dateに変換
+		jst := time.FixedZone("Asia/Tokyo", 9*60*60)
+		fp.CreatedAt = time.Date(
+			fp.CreatedAt.Year(),
+			fp.CreatedAt.Month(),
+			fp.CreatedAt.Day(),
+			0, 0, 0, 0,
+			jst,
+		)
 		footprints = append(footprints, fp)
 	}
 
 	return
+}
+
+func LoadRedisAof() {
+	if _, err := os.Stat("/var/lib/redis/appendonly.aof"); err == nil {
+		loadErr := exec.Command("sh", "-c", "redis-cli --pipe < /var/lib/redis/appendonly.aof").Run()
+		if loadErr != nil {
+			log.Fatalf("Failed to load aof: %s\n", loadErr.Error())
+		}
+	} else {
+		log.Fatalf("appendonly.aof isn't exists.: %s", err.Error())
+	}
 }
 
 // ===== Redis Seed End =====
@@ -272,6 +264,18 @@ func markFootprint(w http.ResponseWriter, r *http.Request, id int) {
 	if user.ID != id {
 		_, err := db.Exec(`INSERT INTO footprints (user_id,owner_id) VALUES (?,?)`, id, user.ID)
 		checkErr(err)
+
+		// FIXME: ここでもう１回DBから取得しなくてはならない.
+		//        できればこの処理をしたくない
+		var footprint Footprint
+		err = db.QueryRow(`SELECT user_id, owner_id, created_at FROM footprints WHERE user_id = ? AND owner_id = ?`, id, user.ID).Scan(
+			&footprint.UserID,
+			&footprint.OwnerID,
+			&footprint.CreatedAt,
+		)
+		checkErr(err)
+		footprint.UpdatedAt = footprint.CreatedAt
+		AddFootprintCache(footprint)
 	}
 }
 
@@ -509,22 +513,24 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) AS updated
-FROM footprints
-WHERE user_id = ?
-GROUP BY user_id, owner_id, DATE(created_at)
-ORDER BY updated DESC
-LIMIT 10`, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
-	}
-	footprints := make([]Footprint, 0, 10)
-	for rows.Next() {
-		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
-		footprints = append(footprints, fp)
-	}
-	rows.Close()
+	// rows, err = db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) AS updated
+	// FROM footprints
+	// WHERE user_id = ?
+	// GROUP BY user_id, owner_id, DATE(created_at)
+	// ORDER BY updated DESC
+	// LIMIT 10`, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// footprints := make([]Footprint, 0, 10)
+	// for rows.Next() {
+	// 	fp := Footprint{}
+	// 	checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
+	// 	footprints = append(footprints, fp)
+	// }
+	// rows.Close()
+
+	footprints := FetchFootprintsCache(user.ID, 10)
 
 	render(w, r, http.StatusOK, "index.html", struct {
 		User              User
@@ -750,22 +756,25 @@ func GetFootprints(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	footprints := make([]Footprint, 0, 50)
-	rows, err := db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) as updated
-FROM footprints
-WHERE user_id = ?
-GROUP BY user_id, owner_id, DATE(created_at)
-ORDER BY updated DESC
-LIMIT 50`, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
-	}
-	for rows.Next() {
-		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
-		footprints = append(footprints, fp)
-	}
-	rows.Close()
+	// footprints := make([]Footprint, 0, 50)
+	// rows, err := db.Query(`SELECT user_id, owner_id, DATE(created_at) AS date, MAX(created_at) as updated
+	// FROM footprints
+	// WHERE user_id = ?
+	// GROUP BY user_id, owner_id, DATE(created_at)
+	// ORDER BY updated DESC
+	// LIMIT 50`, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// for rows.Next() {
+	// 	fp := Footprint{}
+	// 	checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
+	// 	footprints = append(footprints, fp)
+	// }
+	// rows.Close()
+
+	footprints := FetchFootprintsCache(user.ID, 50)
+
 	render(w, r, http.StatusOK, "footprints.html", struct{ Footprints []Footprint }{footprints})
 }
 func GetFriends(w http.ResponseWriter, r *http.Request) {
@@ -821,6 +830,11 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
 	db.Exec("DELETE FROM entries WHERE id > 500000")
 	db.Exec("DELETE FROM comments WHERE id > 1500000")
+
+	loadAof := os.Getenv("ISUCON5_REDIS_LOAD_AOF")
+	if loadAof == "1" {
+		LoadRedisAof()
+	}
 
 	rows, _ := db.Query(`SELECT * FROM users`)
 	users = map[int]User{}
