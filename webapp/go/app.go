@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha512"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -28,6 +30,7 @@ var (
 	db        *sql.DB
 	store     *sessions.CookieStore
 	users     map[int]User
+	salts     map[int]string
 )
 
 type User struct {
@@ -71,10 +74,15 @@ type Friend struct {
 }
 
 type Footprint struct {
-	UserID    int
-	OwnerID   int
-	CreatedAt time.Time
-	Updated   time.Time
+	UserID    int       `json:"user_id"`
+	OwnerID   int       `json:"owner_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type FootprintGroup struct {
+	UserID  int
+	OwnerID int
 }
 
 var prefs = []string{"未入力",
@@ -88,20 +96,97 @@ var (
 	ErrContentNotFound  = errors.New("Content not found.")
 )
 
-func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
-	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
-FROM users u
-JOIN salts s ON u.id = s.user_id
-WHERE u.email = ? AND u.passhash = SHA2(CONCAT(?, s.salt), 512)`
-	row := db.QueryRow(query, email, passwd)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			checkErr(ErrAuthentication)
-		}
+// ===== Redis Seed Start =====
+func InitializeFootprints() {
+	var isNotRequired map[FootprintGroup]bool = map[FootprintGroup]bool{}
+	var maxCreatedAt map[FootprintGroup]time.Time = map[FootprintGroup]time.Time{}
+	var fps []Footprint
+
+	rows, err := db.Query(`SELECT user_id, owner_id, created_at FROM footprints`)
+	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
+	defer rows.Close()
+
+	for rows.Next() {
+		fp := Footprint{}
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt))
+
+		group := FootprintGroup{
+			UserID:  fp.UserID,
+			OwnerID: fp.OwnerID,
+		}
+
+		if fp.CreatedAt.UnixNano() > maxCreatedAt[group].UnixNano() {
+			maxCreatedAt[group] = fp.CreatedAt
+		}
+
+		fps = append(fps, fp)
+	}
+
+	for _, fp := range fps {
+		group := FootprintGroup{
+			UserID:  fp.UserID,
+			OwnerID: fp.OwnerID,
+		}
+
+		if isNotRequired[group] {
+			continue
+		}
+		isNotRequired[group] = true
+
+		var tmpFp Footprint
+		tmpFp = Footprint{
+			UserID:    fp.UserID,
+			OwnerID:   fp.OwnerID,
+			CreatedAt: maxCreatedAt[group],
+			UpdatedAt: maxCreatedAt[group],
+		}
+
+		tmpFpJson, err := json.Marshal(tmpFp)
+		if err != nil {
+			log.Fatalf("Can not marshal footprint to json.: %s\n", err.Error())
+		}
+		redisConn.Do("ZADD", fmt.Sprintf("footprints:user_id:%d", tmpFp.UserID), -tmpFp.CreatedAt.UnixNano(), tmpFpJson)
+	}
+}
+
+func FetchFootprints(userId int, limit int) (footprints []Footprint) {
+	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
+	if err != nil {
+		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
+	}
+
+	for _, fpJson := range fps {
+		fp := Footprint{}
+		json.Unmarshal(fpJson.([]byte), &fp)
+		footprints = append(footprints, fp)
+	}
+
+	return
+}
+
+// ===== Redis Seed End =====
+
+func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
+	var user User
+	for _, user = range users {
+		if user.Email == email {
+			break
+		}
+	}
+
+	if user.Email == "" {
+		checkErr(ErrAuthentication)
+	}
+
+	salt, _ := salts[user.ID]
+	hash := fmt.Sprintf("%x", sha512.Sum512([]byte(fmt.Sprintf("%s%s", passwd, salt))))
+
+	if hash != user.PassHash {
+		checkErr(ErrAuthentication)
+	}
+
 	session := getSession(w, r)
 	session.Values["user_id"] = user.ID
 	session.Save(r, w)
@@ -118,13 +203,8 @@ func getCurrentUser(w http.ResponseWriter, r *http.Request) *User {
 	if !ok || userID == nil {
 		return nil
 	}
-	row := db.QueryRow(`SELECT id, account_name, nick_name, email FROM users WHERE id=?`, userID)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
-	if err == sql.ErrNoRows {
-		checkErr(ErrAuthentication)
-	}
-	checkErr(err)
+
+	user, _ := users[userID.(int)]
 	context.Set(r, "user", user)
 	return &user
 }
@@ -147,15 +227,13 @@ func getUser(w http.ResponseWriter, userID int) *User {
 }
 
 func getUserFromAccount(w http.ResponseWriter, name string) *User {
-	var u User
-	for id := range users {
-		u = users[id]
-		if u.AccountName == name {
-			return &u
+	for _, user := range users {
+		if user.AccountName == name {
+			return &user
 		}
 	}
-	u = User{}
-	return &u
+	user := User{}
+	return &user
 }
 
 func checkFriendFromSlice(friends []int, id int) bool {
@@ -166,7 +244,7 @@ func checkFriendFromSlice(friends []int, id int) bool {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
+	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
 	cnt := new(int)
 	err := row.Scan(cnt)
 	checkErr(err)
@@ -367,10 +445,13 @@ LIMIT 10`, user.ID)
 			friendsMap[friendID] = createdAt
 		}
 	}
-	friends := make([]Friend, 0, len(friendsMap))
+
+	row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
+	var friendsCnt int
+	checkErr(row.Scan(&friendsCnt))
+
 	friendIds := make([]int, 0, len(friendsMap))
-	for key, val := range friendsMap {
-		friends = append(friends, Friend{key, val})
+	for key := range friendsMap {
 		friendIds = append(friendIds, key)
 	}
 	rows.Close()
@@ -440,7 +521,7 @@ LIMIT 10`, user.ID)
 	footprints := make([]Footprint, 0, 10)
 	for rows.Next() {
 		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.Updated))
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
 		footprints = append(footprints, fp)
 	}
 	rows.Close()
@@ -452,10 +533,10 @@ LIMIT 10`, user.ID)
 		CommentsForMe     []Comment
 		EntriesOfFriends  []Entry
 		CommentsOfFriends []Comment
-		Friends           []Friend
+		FriendsCnt        int
 		Footprints        []Footprint
 	}{
-		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friends, footprints,
+		*user, prof, entries, commentsForMe, entriesOfFriends, commentsOfFriends, friendsCnt, footprints,
 	})
 }
 
@@ -681,7 +762,7 @@ LIMIT 50`, user.ID)
 	}
 	for rows.Next() {
 		fp := Footprint{}
-		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.Updated))
+		checkErr(rows.Scan(&fp.UserID, &fp.OwnerID, &fp.CreatedAt, &fp.UpdatedAt))
 		footprints = append(footprints, fp)
 	}
 	rows.Close()
@@ -747,6 +828,16 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		u := User{}
 		checkErr(rows.Scan(&u.ID, &u.AccountName, &u.NickName, &u.Email, &u.PassHash))
 		users[u.ID] = u
+	}
+	rows.Close()
+
+	rows, _ = db.Query(`SELECT * FROM salts`)
+	salts = map[int]string{}
+	for rows.Next() {
+		var id int
+		var s string
+		checkErr(rows.Scan(&id, &s))
+		salts[id] = s
 	}
 	rows.Close()
 }
