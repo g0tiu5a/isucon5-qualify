@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha512"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -168,19 +169,24 @@ func FetchFootprints(userId int, limit int) (footprints []Footprint) {
 // ===== Redis Seed End =====
 
 func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
-	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
-FROM users u
-JOIN salts s ON u.id = s.user_id
-WHERE u.email = ? AND u.passhash = SHA2(CONCAT(?, s.salt), 512)`
-	row := db.QueryRow(query, email, passwd)
-	user := User{}
-	err := row.Scan(&user.ID, &user.AccountName, &user.NickName, &user.Email)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			checkErr(ErrAuthentication)
+	var user User
+	for _, user = range users {
+		if user.Email == email {
+			break
 		}
-		checkErr(err)
 	}
+
+	if user.Email == "" {
+		checkErr(ErrAuthentication)
+	}
+
+	salt, _ := salts[user.ID]
+	hash := fmt.Sprintf("%x", sha512.Sum512([]byte(fmt.Sprintf("%s%s", passwd, salt))))
+
+	if hash != user.PassHash {
+		checkErr(ErrAuthentication)
+	}
+
 	session := getSession(w, r)
 	session.Values["user_id"] = user.ID
 	session.Save(r, w)
