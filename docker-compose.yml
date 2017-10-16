@@ -35,6 +35,6 @@ services:
       - ISUCON5_DB_USE_TCP=1
       - ISUCON5_REDIS_USE_TCP=1
       - ISUCON5_REDIS_HOST=redis
-      - ISUCON5_REDIS_LOAD_AOF=0
+      - ISUCON5_REDIS_LOAD_AOF=1
     ports:
       - "8080:8080"
