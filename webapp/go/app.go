@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	redisConn redis.Conn
+	redisPool *redis.Pool
 	db        *sql.DB
 	store     *sessions.CookieStore
 	users     map[int]User
@@ -98,7 +98,10 @@ var (
 )
 
 // ===== Redis Seed Start =====
+
 func AddFootprintCache(footprint Footprint) {
+	redisConn := redisPool.Get()
+	defer redisConn.Close()
 	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1))
 	if err != nil {
 		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
@@ -123,6 +126,8 @@ func AddFootprintCache(footprint Footprint) {
 }
 
 func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
+	redisConn := redisPool.Get()
+	defer redisConn.Close()
 	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
 	if err != nil {
 		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
@@ -823,6 +828,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	host := os.Getenv("ISUCON5_DB_HOST")
 	if host == "" {
 		host = "localhost"
@@ -869,17 +875,30 @@ func main() {
 
 	redisUseTcp := os.Getenv("ISUCON5_REDIS_USE_TCP")
 	if redisUseTcp == "" {
-		redisConn, err = redis.Dial("unix", "/var/run/redis/redis.sock")
-		if err != nil {
-			log.Fatalf("Failed to connect to Redis with Unix domain socket: %s.", err.Error())
+		redisPool = &redis.Pool{
+			MaxIdle:     3,
+			IdleTimeout: 240 * time.Second,
+			Dial: func() (redis.Conn, error) {
+				c, err := redis.Dial("unix", "/var/run/redis/redis.sock")
+				if err != nil {
+					log.Fatalf("Failed to create redis connection pool: %s\n", err.Error())
+				}
+				return c
+			},
 		}
 	} else {
-		redisConn, err = redis.Dial("tcp", fmt.Sprintf("%v:6379", redisHost))
-		if err != nil {
-			log.Fatalf("Failed to connect to Redis with TCP: %s.", err.Error())
+		redisPool = &redis.Pool{
+			MaxIdle:     3,
+			IdleTimeout: 240 * time.Second,
+			Dial: func() (redis.Conn, error) {
+				c, err := redis.Dial("tcp", fmt.Sprintf("%v:6379", redisHost))
+				if err != nil {
+					log.Fatalf("Failed to create redis connection pool: %s\n", err.Error())
+				}
+				return c
+			},
 		}
 	}
-	defer redisConn.Close()
 
 	store = sessions.NewCookieStore([]byte(ssecret))
 
