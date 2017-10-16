@@ -86,6 +86,12 @@ type FootprintGroup struct {
 	OwnerID int
 }
 
+type Relation struct {
+	One       int       `json:"one"`
+	Another   int       `json:"another"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 var prefs = []string{"未入力",
 	"北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県",
 	"石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県",
@@ -149,6 +155,24 @@ func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
 		footprints = append(footprints, fp)
 	}
 
+	return
+}
+
+func AddRelationCache(relation Relation) {
+	redisConn := redisPool.Get()
+	defer redisConn.Close()
+
+	redisConn.Do("ZADD", fmt.Sprintf("relations:one:%d", relation.One), -relation.CreatedAt.UnixNano(), relation.Another)
+}
+
+func FetchRelationsCache(one int) (anothers []int) {
+	redisConn := redisPool.Get()
+	defer redisConn.Close()
+
+	anothers, err := redis.Ints(redisConn.Do("ZRANGE", fmt.Sprintf("relations:one:%d", one), 0, -1))
+	if err != nil {
+		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
+	}
 	return
 }
 
@@ -241,11 +265,15 @@ func checkFriendFromSlice(friends []int, id int) bool {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
-	cnt := new(int)
-	err := row.Scan(cnt)
-	checkErr(err)
-	return *cnt > 0
+
+	friends := FetchRelationsCache(id.(int))
+	for _, friends_id := range friends {
+		if friends_id == anotherID {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -455,17 +483,8 @@ LIMIT 10`, user.ID)
 		}
 	}
 
-	row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
-	var friendsCnt int
-	checkErr(row.Scan(&friendsCnt))
-
-	friendIds := make([]int, 0, len(friendsMap))
-	for key := range friendsMap {
-		friendIds = append(friendIds, key)
-	}
-	rows.Close()
-
-	sort.Ints(friendIds)
+	friendIds := FetchRelationsCache(user.ID)
+	friendsCnt := len(friendIds)
 
 	rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	if err != sql.ErrNoRows {
@@ -792,6 +811,18 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		another := getUserFromAccount(w, anotherAccount)
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
+
+		// FIXME: これも、可能な限りやりたくない
+		//        だが、created_atを取るためにも必要...
+		var relation Relation
+		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
+			&relation.One,
+			&relation.Another,
+			&relation.CreatedAt,
+		)
+		checkErr(err)
+		AddRelationCache(relation)
+
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
