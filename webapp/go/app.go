@@ -881,9 +881,9 @@ func main() {
 			Dial: func() (redis.Conn, error) {
 				c, err := redis.Dial("unix", "/var/run/redis/redis.sock")
 				if err != nil {
-					log.Fatalf("Failed to create redis connection pool: %s\n", err.Error())
+					return nil, err
 				}
-				return c
+				return c, err
 			},
 		}
 	} else {
@@ -893,9 +893,9 @@ func main() {
 			Dial: func() (redis.Conn, error) {
 				c, err := redis.Dial("tcp", fmt.Sprintf("%v:6379", redisHost))
 				if err != nil {
-					log.Fatalf("Failed to create redis connection pool: %s\n", err.Error())
+					return nil, err
 				}
-				return c
+				return c, err
 			},
 		}
 	}
