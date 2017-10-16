@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	redis "github.com/garyburd/redigo/redis"
@@ -105,9 +106,18 @@ var (
 
 // ===== Redis Seed Start =====
 
+var (
+	FootprintLock sync.RWMutex
+	RelationLock  sync.RWMutex
+)
+
 func AddFootprintCache(footprint Footprint) {
 	redisConn := redisPool.Get()
 	defer redisConn.Close()
+
+	FootprintLock.Lock()
+	defer FootprintLock.Unlock()
+
 	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", footprint.UserID), 0, -1))
 	if err != nil {
 		log.Fatalf("Failed to fetch footprint cache footprints:user_id:%d: %s\n", footprint.UserID, err.Error())
@@ -134,6 +144,10 @@ func AddFootprintCache(footprint Footprint) {
 func FetchFootprintsCache(userId int, limit int) (footprints []Footprint) {
 	redisConn := redisPool.Get()
 	defer redisConn.Close()
+
+	FootprintLock.RLock()
+	defer FootprintLock.RUnlock()
+
 	fps, err := redis.Values(redisConn.Do("ZRANGE", fmt.Sprintf("footprints:user_id:%d", userId), 0, limit-1))
 	if err != nil {
 		log.Fatalf("Can not fetch data from cache: %s.", err.Error())
@@ -162,12 +176,18 @@ func AddRelationCache(relation Relation) {
 	redisConn := redisPool.Get()
 	defer redisConn.Close()
 
+	RelationLock.Lock()
+	defer RelationLock.Unlock()
+
 	redisConn.Do("ZADD", fmt.Sprintf("relations:one:%d", relation.One), -relation.CreatedAt.UnixNano(), relation.Another)
 }
 
 func FetchRelationsCache(one int) (anothers []int) {
 	redisConn := redisPool.Get()
 	defer redisConn.Close()
+
+	RelationLock.RLock()
+	defer RelationLock.RUnlock()
 
 	anothers, err := redis.Ints(redisConn.Do("ZRANGE", fmt.Sprintf("relations:one:%d", one), 0, -1))
 	if err != nil {
