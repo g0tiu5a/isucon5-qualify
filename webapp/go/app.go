@@ -410,8 +410,8 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-FROM comments c
-JOIN entries e ON c.entry_id = e.id
+FROM entries e
+JOIN comments c ON c.entry_id = e.id
 WHERE e.user_id = ?
 ORDER BY c.created_at DESC
 LIMIT 10`, user.ID)
