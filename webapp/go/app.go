@@ -284,9 +284,11 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
 
+	RelationLock.RLock()
 	friends := FetchRelationsCache(id.(int))
-	for _, friends_id := range friends {
-		if friends_id == anotherID {
+	RelationLock.RUnlock()
+	for _, friendsId := range friends {
+		if friendsId == anotherID {
 			return true
 		}
 	}
@@ -454,6 +456,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		checkErr(err)
 	}
 	entries := make([]Entry, 0, 5)
+	entrie_ids := []string{}
 	for rows.Next() {
 		var id, userID, private int
 		var body string
@@ -461,15 +464,12 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var title string
 		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
 		entries = append(entries, Entry{id, userID, private == 1, title, body, createdAt})
+		entrie_ids = append(entrie_ids, strconv.Itoa(id))
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-FROM comments c
-JOIN entries e ON c.entry_id = e.id
-WHERE e.user_id = ?
-ORDER BY c.created_at DESC
-LIMIT 10`, user.ID)
+	stmtGetCommentsForMe := `SELECT * FROM comments WHERE entry_id IN (%s)`
+	rows, err = db.Query(fmt.Sprintf(stmtGetCommentsForMe, strings.Join(entrie_ids, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
@@ -482,6 +482,8 @@ LIMIT 10`, user.ID)
 	rows.Close()
 
 	// NOTE: relations 改善部分
+	var friendsCnt int
+	var friendIds []int
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
@@ -493,7 +495,9 @@ LIMIT 10`, user.ID)
 		checkErr(rows.Scan(&id, &one, &another, &createdAt))
 		var friendID int
 		if one == user.ID {
+			friendsCnt += 1
 			friendID = another
+			friendIds = append(friendIds, friendID)
 		} else {
 			friendID = one
 		}
@@ -501,9 +505,9 @@ LIMIT 10`, user.ID)
 			friendsMap[friendID] = createdAt
 		}
 	}
+	rows.Close()
 
-	friendIds := FetchRelationsCache(user.ID)
-	friendsCnt := len(friendIds)
+	sort.Ints(friendIds)
 
 	rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	if err != sql.ErrNoRows {
@@ -740,6 +744,7 @@ func PostEntry(w http.ResponseWriter, r *http.Request) {
 	} else {
 		private = 1
 	}
+
 	_, err := db.Exec(`INSERT INTO entries (user_id, private, body, title) VALUES (?,?,?,?)`, user.ID, private, content, title)
 	checkErr(err)
 	http.Redirect(w, r, "/diary/entries/"+user.AccountName, http.StatusSeeOther)
@@ -831,18 +836,19 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
 
-		// FIXME: これも、可能な限りやりたくない
-		//        だが、created_atを取るためにも必要...
+		// FIXME: 可能な限り避けたいが、created_atを取得するために必要
 		var relation Relation
-		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
+		err = db.QueryRow(`SELECT one, another, created_at FROM relations WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
 			&relation.One,
 			&relation.Another,
 			&relation.CreatedAt,
 		)
 		checkErr(err)
+		RelationLock.Lock()
 		AddRelationCache(relation)
 		relation.One, relation.Another = another.ID, user.ID
 		AddRelationCache(relation)
+		RelationLock.Unlock()
 
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
