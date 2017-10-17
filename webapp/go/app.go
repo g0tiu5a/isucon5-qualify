@@ -250,10 +250,20 @@ var IsFriendCache map[FriendRelation]bool
 
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
-	id := session.Values["user_id"]
+
+	id, ok := session.Values["user_id"].(string)
+	if !ok {
+		log.Fatalf("Failed to convert id to string\n")
+	}
+
+	var err error
+	var intId int
+	if intId, err = strconv.Atoi(id); err != nil {
+		log.Fatalf("Failed to convert id to int.: %s\n", err.Error())
+	}
 
 	fr := FriendRelation{
-		One:     id.(int),
+		One:     intId,
 		Another: anotherID,
 	}
 
@@ -264,7 +274,7 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 
 	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
 	cnt := new(int)
-	err := row.Scan(cnt)
+	err = row.Scan(cnt)
 	checkErr(err)
 
 	IsFriendCache[fr] = (*cnt > 0)
