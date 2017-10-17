@@ -253,13 +253,13 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	id := session.Values["user_id"]
 
 	fr := FriendRelation{
-		One:     id,
+		One:     id.(int),
 		Another: anotherID,
 	}
 
 	// キャッシュがあるならそれを返す
 	if cacheResult, ok := IsFriendCache[fr]; ok {
-		return IsFriendCache[fr]
+		return cacheResult
 	}
 
 	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
@@ -267,7 +267,7 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	err := row.Scan(cnt)
 	checkErr(err)
 
-	IsFriendCcahe[fr] = (*cnt > 0)
+	IsFriendCache[fr] = (*cnt > 0)
 
 	return IsFriendCache[fr]
 }
