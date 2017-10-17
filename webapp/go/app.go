@@ -283,15 +283,11 @@ func checkFriendFromSlice(friends []int, id int) bool {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-
-	friends := FetchRelationsCache(id.(int))
-	for _, friends_id := range friends {
-		if friends_id == anotherID {
-			return true
-		}
-	}
-
-	return false
+	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
+	cnt := new(int)
+	err := row.Scan(cnt)
+	checkErr(err)
+	return *cnt > 0
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -480,14 +476,12 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	// NOTE: relations 改善部分
-	RelationLock.RLock()
 	var friendsCnt int
 	var friendIds []int
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
-	RelationLock.RUnlock()
 	friendsMap := make(map[int]time.Time)
 	for rows.Next() {
 		var id, one, another int
@@ -797,12 +791,10 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	RelationLock.RLock()
 	rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
-	RelationLock.RUnlock()
 	friendsMap := make(map[int]time.Time)
 	for rows.Next() {
 		var id, one, another int
@@ -835,24 +827,8 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	anotherAccount := mux.Vars(r)["account_name"]
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
-		RelationLock.Lock()
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
-		RelationLock.Unlock()
-
-		// FIXME: これも、可能な限りやりたくない
-		//        だが、created_atを取るためにも必要...
-		var relation Relation
-		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
-			&relation.One,
-			&relation.Another,
-			&relation.CreatedAt,
-		)
-		checkErr(err)
-		AddRelationCache(relation)
-		relation.One, relation.Another = another.ID, user.ID
-		AddRelationCache(relation)
-
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
