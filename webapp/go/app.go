@@ -250,11 +250,7 @@ var IsFriendCache map[FriendRelation]bool
 
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
-
-	userID, ok := session.Values["user_id"]
-	if !ok {
-		log.Fatalf("Failed to convert id to string\n")
-	}
+	userID := session.Values["user_id"]
 
 	var err error
 	var oneID int
