@@ -965,7 +965,9 @@ func main() {
 	r.HandleFunc("/initialize", myHandler(GetInitialize))
 	r.HandleFunc("/", myHandler(GetIndex))
 
-	log.Println(http.ListenAndServe("localhost:6060", nil))
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
