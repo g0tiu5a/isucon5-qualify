@@ -411,9 +411,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 
-	stmtGetCommentsForMe := `SELECT id, entry_id, user_id, comment, created_at
-FROM comments
-WHERE entry_id IN (%s)`
+	stmtGetCommentsForMe := `SELECT * FROM comments WHERE entry_id IN (%s)`
 	//rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
 	// FROM entries e
 	// JOIN comments c ON c.entry_id = e.id
