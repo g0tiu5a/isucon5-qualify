@@ -467,7 +467,7 @@ WHERE entry_id IN (%s)`
 
 	sort.Ints(friendIds)
 
-	rows, err = db.Query(`SELECT id, user_id, private, body, createdAt, title FROM entries ORDER BY created_at DESC LIMIT 1000`)
+	rows, err = db.Query(`SELECT id, user_id, private, body, created_at, title FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
