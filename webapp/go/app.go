@@ -246,29 +246,14 @@ func checkFriendFromSlice(friends []int, id int) bool {
 	return index < len(friends) && friends[index] == id
 }
 
-var IsFriendCache map[FriendRelation]bool = make(map[FriendRelation]bool)
-
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
-	userID := session.Values["user_id"]
-
-	fr := FriendRelation{
-		One:     userID.(int),
-		Another: anotherID,
-	}
-
-	// キャッシュがあるならそれを返す
-	if cacheResult, ok := IsFriendCache[fr]; ok {
-		return cacheResult
-	}
-
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, userID, anotherID)
+	id := session.Values["user_id"]
+	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
 	cnt := new(int)
 	err := row.Scan(cnt)
 	checkErr(err)
-
-	IsFriendCache[fr] = (*cnt > 0)
-	return IsFriendCache[fr]
+	return *cnt > 0
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
