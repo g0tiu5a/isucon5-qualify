@@ -399,6 +399,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		checkErr(err)
 	}
 	entries := make([]Entry, 0, 5)
+	entrie_ids := []string{}
 	for rows.Next() {
 		var id, userID, private int
 		var body string
@@ -406,15 +407,12 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var title string
 		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
 		entries = append(entries, Entry{id, userID, private == 1, title, body, createdAt})
+		entrie_ids = append(entrie_ids, strconv.Itoa(id))
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-FROM comments c
-JOIN entries e ON c.entry_id = e.id
-WHERE e.user_id = ?
-ORDER BY c.created_at DESC
-LIMIT 10`, user.ID)
+	stmtGetCommentsForMe := `SELECT * FROM comments WHERE entry_id IN (%s)`
+	rows, err = db.Query(fmt.Sprintf(stmtGetCommentsForMe, strings.Join(entrie_ids, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
@@ -426,6 +424,7 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
+	var friendsCnt int
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
@@ -437,6 +436,7 @@ LIMIT 10`, user.ID)
 		checkErr(rows.Scan(&id, &one, &another, &createdAt))
 		var friendID int
 		if one == user.ID {
+			friendsCnt += 1
 			friendID = another
 		} else {
 			friendID = one
@@ -445,10 +445,6 @@ LIMIT 10`, user.ID)
 			friendsMap[friendID] = createdAt
 		}
 	}
-
-	row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
-	var friendsCnt int
-	checkErr(row.Scan(&friendsCnt))
 
 	friendIds := make([]int, 0, len(friendsMap))
 	for key := range friendsMap {
@@ -708,6 +704,7 @@ func PostEntry(w http.ResponseWriter, r *http.Request) {
 	} else {
 		private = 1
 	}
+
 	_, err := db.Exec(`INSERT INTO entries (user_id, private, body, title) VALUES (?,?,?,?)`, user.ID, private, content, title)
 	checkErr(err)
 	http.Redirect(w, r, "/diary/entries/"+user.AccountName, http.StatusSeeOther)
@@ -843,6 +840,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	runtime.GOMAXPROCS(32)
 	host := os.Getenv("ISUCON5_DB_HOST")
 	if host == "" {
 		host = "localhost"
