@@ -412,15 +412,6 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	stmtGetCommentsForMe := `SELECT * FROM comments WHERE entry_id IN (%s)`
-	//rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-	// FROM entries e
-	// JOIN comments c ON c.entry_id = e.id
-	// WHERE e.user_id = ?
-	// ORDER BY c.created_at DESC
-	// LIMIT 10`, user.ID)
-	// 	if err != sql.ErrNoRows {
-	// 		checkErr(err)
-	// 	}
 	rows, err = db.Query(fmt.Sprintf(stmtGetCommentsForMe, strings.Join(entrie_ids, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
@@ -433,6 +424,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 
+	var friendsCnt int
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
@@ -444,6 +436,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		checkErr(rows.Scan(&id, &one, &another, &createdAt))
 		var friendID int
 		if one == user.ID {
+			friendsCnt += 1
 			friendID = another
 		} else {
 			friendID = one
@@ -453,9 +446,9 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
-	var friendsCnt int
-	checkErr(row.Scan(&friendsCnt))
+	// row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
+	// var friendsCnt int
+	// checkErr(row.Scan(&friendsCnt))
 
 	friendIds := make([]int, 0, len(friendsMap))
 	for key := range friendsMap {
