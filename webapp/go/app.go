@@ -284,7 +284,9 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
 
+	RelationLock.RLock()
 	friends := FetchRelationsCache(id.(int))
+	RelationLock.RUnlock()
 	for _, friendsId := range friends {
 		if friendsId == anotherID {
 			return true
@@ -842,9 +844,11 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 			&relation.CreatedAt,
 		)
 		checkErr(err)
+		RelationLock.Lock()
 		AddRelationCache(relation)
 		relation.One, relation.Another = another.ID, user.ID
 		AddRelationCache(relation)
+		RelationLock.Unlock()
 
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
