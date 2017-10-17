@@ -399,6 +399,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		checkErr(err)
 	}
 	entries := make([]Entry, 0, 5)
+	entrie_ids := []string{}
 	for rows.Next() {
 		var id, userID, private int
 		var body string
@@ -406,15 +407,23 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var title string
 		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
 		entries = append(entries, Entry{id, userID, private == 1, title, body, createdAt})
+		entrie_ids = append(entrie_ids, strconv.Itoa(id))
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
-FROM entries e
-JOIN comments c ON c.entry_id = e.id
-WHERE e.user_id = ?
-ORDER BY c.created_at DESC
-LIMIT 10`, user.ID)
+	stmtGetCommentsForMe := `SELECT id, entry_id, user_id, comment, created_at
+FROM comments
+WHERE entry_id IN (%s)`
+	//rows, err = db.Query(`SELECT c.id AS id, c.entry_id AS entry_id, c.user_id AS user_id, c.comment AS comment, c.created_at AS created_at
+	// FROM entries e
+	// JOIN comments c ON c.entry_id = e.id
+	// WHERE e.user_id = ?
+	// ORDER BY c.created_at DESC
+	// LIMIT 10`, user.ID)
+	// 	if err != sql.ErrNoRows {
+	// 		checkErr(err)
+	// 	}
+	rows, err = db.Query(fmt.Sprintf(stmtGetCommentsForMe, strings.Join(entrie_ids, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
@@ -458,7 +467,7 @@ LIMIT 10`, user.ID)
 
 	sort.Ints(friendIds)
 
-	rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
+	rows, err = db.Query(`SELECT id, user_id, private, body, createdAt, title FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
