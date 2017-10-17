@@ -246,8 +246,6 @@ func checkFriendFromSlice(friends []int, id int) bool {
 	return index < len(friends) && friends[index] == id
 }
 
-var IsFriendCache map[FriendRelation]bool
-
 var IsFriendCache map[FriendRelation]bool = make(map[FriendRelation]bool)
 
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
