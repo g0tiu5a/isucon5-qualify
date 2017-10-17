@@ -283,11 +283,15 @@ func checkFriendFromSlice(friends []int, id int) bool {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
-	cnt := new(int)
-	err := row.Scan(cnt)
-	checkErr(err)
-	return *cnt > 0
+
+	friends := FetchRelationsCache(id.(int))
+	for _, friendsId := range friends {
+		if friendsId == anotherID {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -829,6 +833,19 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		another := getUserFromAccount(w, anotherAccount)
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
+
+		// FIXME: 可能な限り避けたいが、created_atを取得するために必要
+		var relation Relation
+		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
+			&relation.One,
+			&relation.Another,
+			&relation.CreatedAt,
+		)
+		checkErr(err)
+		AddRelationCache(relation)
+		relation.One, relation.Another = another.ID, user.ID
+		AddRelationCache(relation)
+
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
