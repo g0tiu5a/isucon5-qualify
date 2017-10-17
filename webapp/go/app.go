@@ -109,6 +109,8 @@ var (
 var (
 	FootprintLock sync.RWMutex
 	RelationLock  sync.RWMutex
+
+	FriendLock sync.RWMutex
 )
 
 func AddFootprintCache(footprint Footprint) {
@@ -283,7 +285,9 @@ func checkFriendFromSlice(friends []int, id int) bool {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
+	FriendLock.RLock()
 	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
+	FriendLock.RUnlock()
 	cnt := new(int)
 	err := row.Scan(cnt)
 	checkErr(err)
@@ -478,10 +482,12 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	// NOTE: relations 改善部分
 	var friendsCnt int
 	var friendIds []int
+	FriendLock.RLock()
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
+	FriendLock.RUnlock()
 	friendsMap := make(map[int]time.Time)
 	for rows.Next() {
 		var id, one, another int
@@ -791,10 +797,12 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
+	FriendLock.RLock()
 	rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
+	FriendLock.RUnlock()
 	friendsMap := make(map[int]time.Time)
 	for rows.Next() {
 		var id, one, another int
@@ -827,8 +835,10 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	anotherAccount := mux.Vars(r)["account_name"]
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
+		FriendLock.Lock()
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
+		FriendLock.Unlock()
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
