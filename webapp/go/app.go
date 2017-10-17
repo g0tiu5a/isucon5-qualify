@@ -248,18 +248,14 @@ func checkFriendFromSlice(friends []int, id int) bool {
 
 var IsFriendCache map[FriendRelation]bool
 
+var IsFriendCache map[FriendRelation]bool = make(map[FriendRelation]bool)
+
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	userID := session.Values["user_id"]
 
-	var err error
-	var oneID int
-	if oneID, err = strconv.Atoi(userID.(string)); err != nil {
-		log.Fatalf("Failed to convert id to int.: %s\n", err.Error())
-	}
-
 	fr := FriendRelation{
-		One:     oneID,
+		One:     userID.(int),
 		Another: anotherID,
 	}
 
@@ -268,13 +264,12 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 		return cacheResult
 	}
 
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, oneID, anotherID)
+	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, userID, anotherID)
 	cnt := new(int)
-	err = row.Scan(cnt)
+	err := row.Scan(cnt)
 	checkErr(err)
 
 	IsFriendCache[fr] = (*cnt > 0)
-
 	return IsFriendCache[fr]
 }
 
