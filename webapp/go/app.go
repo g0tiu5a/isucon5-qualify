@@ -482,6 +482,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	// NOTE: relations 改善部分
 	RelationLock.RLock()
 	var friendsCnt int
+	var friendIds []int
 	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	if err != sql.ErrNoRows {
 		checkErr(err)
@@ -496,6 +497,7 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		if one == user.ID {
 			friendsCnt += 1
 			friendID = another
+			friendIds = append(friendIds, friendID)
 		} else {
 			friendID = one
 		}
@@ -503,9 +505,6 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 			friendsMap[friendID] = createdAt
 		}
 	}
-
-	friendIds := FetchRelationsCache(user.ID)
-	friendsCnt := len(friendIds)
 	rows.Close()
 
 	sort.Ints(friendIds)
