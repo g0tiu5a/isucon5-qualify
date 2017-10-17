@@ -85,6 +85,11 @@ type FootprintGroup struct {
 	OwnerID int
 }
 
+type FriendRelation struct {
+	One     int
+	Another int
+}
+
 var prefs = []string{"未入力",
 	"北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県",
 	"石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県",
@@ -241,14 +246,30 @@ func checkFriendFromSlice(friends []int, id int) bool {
 	return index < len(friends) && friends[index] == id
 }
 
+var IsFriendCache map[FriendRelation]bool
+
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
+
+	fr := FriendRelation{
+		One:     id,
+		Another: anotherID,
+	}
+
+	// キャッシュがあるならそれを返す
+	if cacheResult, ok := IsFriendCache[fr]; ok {
+		return IsFriendCache[fr]
+	}
+
 	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?)`, id, anotherID)
 	cnt := new(int)
 	err := row.Scan(cnt)
 	checkErr(err)
-	return *cnt > 0
+
+	IsFriendCcahe[fr] = (*cnt > 0)
+
+	return IsFriendCache[fr]
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -445,10 +466,6 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 			friendsMap[friendID] = createdAt
 		}
 	}
-
-	// row = db.QueryRow(`SELECT COUNT(*) AS friendCnt FROM relations WHERE one = ?`, user.ID)
-	// var friendsCnt int
-	// checkErr(row.Scan(&friendsCnt))
 
 	friendIds := make([]int, 0, len(friendsMap))
 	for key := range friendsMap {
@@ -708,6 +725,7 @@ func PostEntry(w http.ResponseWriter, r *http.Request) {
 	} else {
 		private = 1
 	}
+
 	_, err := db.Exec(`INSERT INTO entries (user_id, private, body, title) VALUES (?,?,?,?)`, user.ID, private, content, title)
 	checkErr(err)
 	http.Redirect(w, r, "/diary/entries/"+user.AccountName, http.StatusSeeOther)
