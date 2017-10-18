@@ -826,6 +826,20 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 		another := getUserFromAccount(w, anotherAccount)
 		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
 		checkErr(err)
+
+		// FIXME: created_atを取得するための処理だが、無駄にI/O処理をしたくない
+		var relation Relation
+		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
+			&relation.One,
+			&relation.Another,
+			&relation.CreatedAt,
+		)
+		checkErr(err)
+
+		AddRelationCache(relation)
+		relation.One, relation.Another = another.ID, user.ID
+		AddRelationCache(relation)
+
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
