@@ -829,7 +829,7 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 
 		// FIXME: created_atを取得するための処理だが、無駄にI/O処理をしたくない
 		var relation Relation
-		err = db.QueryRow(`SELECT one, another, created_at FROM footprints WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
+		err = db.QueryRow(`SELECT one, another, created_at FROM relations WHERE one = ? AND another = ?`, user.ID, another.ID).Scan(
 			&relation.One,
 			&relation.Another,
 			&relation.CreatedAt,
