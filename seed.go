@@ -215,10 +215,10 @@ func main() {
 		log.Fatalf("Failed to disable appendonly")
 	}
 
-	footprints := FetchFootprints(3011, 10)
-	for idx, fp := range footprints {
-		fmt.Printf("[footprints:%d] %v\n", idx, fp)
-	}
+	// footprints := FetchFootprints(3011, 10)
+	// for idx, fp := range footprints {
+	// 	fmt.Printf("[footprints:%d] %v\n", idx, fp)
+	// }
 
 	// friends := FetchRelations(1995)
 	// for idx, friend := range friends {

@@ -814,6 +814,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
+	commentCnt = map[int]int{}
 	for rows.Next() {
 		var entry_id, count int
 		checkErr(rows.Scan(&entry_id, &count))
