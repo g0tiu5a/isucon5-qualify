@@ -455,15 +455,19 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	friendIds := make([]int, 0, len(friendsMap))
+	// friendIds := make([]int, 0, len(friendsMap))
+	friendIds := make([]string, 0, len(friendsMap))
 	for key := range friendsMap {
-		friendIds = append(friendIds, key)
+		// friendIds = append(friendIds, key)
+		friendIds = append(friendIds, strconv.Itoa(key))
 	}
 	rows.Close()
 
-	sort.Ints(friendIds)
+	//sort.Ints(friendIds)
 
-	rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
+	// rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
+	stmtFriendEntries := "SELECT * FROM entries WHERE user_id IN (%s) ORDER BY created_at DESC LIMIT 10"
+	rows, err = db.Query(fmt.Sprintf(stmtFriendEntries, strings.Join(friendIds, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
@@ -474,17 +478,19 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var createdAt time.Time
 		var title string
 		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
-		if !checkFriendFromSlice(friendIds, userID) {
-			continue
-		}
+		// if !checkFriendFromSlice(friendIds, userID) {
+		// 	continue
+		// }
 		entriesOfFriends = append(entriesOfFriends, Entry{id, userID, private == 1, title, body, createdAt})
-		if len(entriesOfFriends) >= 10 {
-			break
-		}
+		// if len(entriesOfFriends) >= 10 {
+		// 	break
+		// }
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000`)
+	// rows, err = db.Query(`SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000`)
+	stmtFriendComments := "SELECT * FROM comments WHERE user_id IN (%s) ORDER BY created_at DESC LIMIT 10"
+	rows, err = db.Query(fmt.Sprintf(stmtFriendComments, strings.Join(friendIds, ",")))
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
@@ -492,9 +498,9 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		c := Comment{}
 		checkErr(rows.Scan(&c.ID, &c.EntryID, &c.UserID, &c.Comment, &c.CreatedAt))
-		if !checkFriendFromSlice(friendIds, c.UserID) {
-			continue
-		}
+		// if !checkFriendFromSlice(friendIds, c.UserID) {
+		// 	continue
+		// }
 		row := db.QueryRow(`SELECT * FROM entries WHERE id = ?`, c.EntryID)
 		var id, userID, private int
 		var body string
@@ -508,9 +514,9 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		commentsOfFriends = append(commentsOfFriends, c)
-		if len(commentsOfFriends) >= 10 {
-			break
-		}
+		// if len(commentsOfFriends) >= 10 {
+		// 	break
+		// }
 	}
 	rows.Close()
 
