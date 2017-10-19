@@ -34,6 +34,8 @@ var (
 	salts     map[int]string
 
 	FootprintLock sync.RWMutex
+
+	commentCnt map[int]int // user_id => CommentCnt
 )
 
 type User struct {
@@ -359,10 +361,11 @@ func render(w http.ResponseWriter, r *http.Request, status int, file string, dat
 			return Entry{id, userID, private == 1, title, body, createdAt}
 		},
 		"numComments": func(id int) int {
-			row := db.QueryRow(`SELECT COUNT(*) AS c FROM comments WHERE entry_id = ?`, id)
-			var n int
-			checkErr(row.Scan(&n))
-			return n
+			// row := db.QueryRow(`SELECT COUNT(*) AS c FROM comments WHERE entry_id = ?`, id)
+			// var n int
+			// checkErr(row.Scan(&n))
+			// return n
+			return commentCnt[id]
 		},
 	}
 	tpl := template.Must(template.New(file).Funcs(fmap).ParseFiles(getTemplatePath(file), getTemplatePath("header.html")))
@@ -455,17 +458,12 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// friendIds := make([]int, 0, len(friendsMap))
 	friendIds := make([]string, 0, len(friendsMap))
 	for key := range friendsMap {
-		// friendIds = append(friendIds, key)
 		friendIds = append(friendIds, strconv.Itoa(key))
 	}
 	rows.Close()
 
-	//sort.Ints(friendIds)
-
-	// rows, err = db.Query(`SELECT * FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	stmtFriendEntries := "SELECT * FROM entries WHERE user_id IN (%s) ORDER BY created_at DESC LIMIT 10"
 	rows, err = db.Query(fmt.Sprintf(stmtFriendEntries, strings.Join(friendIds, ",")))
 	if err != sql.ErrNoRows {
@@ -478,17 +476,9 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 		var createdAt time.Time
 		var title string
 		checkErr(rows.Scan(&id, &userID, &private, &body, &createdAt, &title))
-		// if !checkFriendFromSlice(friendIds, userID) {
-		// 	continue
-		// }
-		entriesOfFriends = append(entriesOfFriends, Entry{id, userID, private == 1, title, body, createdAt})
-		// if len(entriesOfFriends) >= 10 {
-		// 	break
-		// }
 	}
 	rows.Close()
 
-	// rows, err = db.Query(`SELECT * FROM comments ORDER BY created_at DESC LIMIT 1000`)
 	stmtFriendComments := "SELECT * FROM comments WHERE user_id IN (%s) ORDER BY created_at DESC LIMIT 10"
 	rows, err = db.Query(fmt.Sprintf(stmtFriendComments, strings.Join(friendIds, ",")))
 	if err != sql.ErrNoRows {
@@ -498,9 +488,6 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		c := Comment{}
 		checkErr(rows.Scan(&c.ID, &c.EntryID, &c.UserID, &c.Comment, &c.CreatedAt))
-		// if !checkFriendFromSlice(friendIds, c.UserID) {
-		// 	continue
-		// }
 		row := db.QueryRow(`SELECT * FROM entries WHERE id = ?`, c.EntryID)
 		var id, userID, private int
 		var body string
@@ -514,9 +501,6 @@ func GetIndex(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		commentsOfFriends = append(commentsOfFriends, c)
-		// if len(commentsOfFriends) >= 10 {
-		// 	break
-		// }
 	}
 	rows.Close()
 
@@ -738,6 +722,7 @@ func PostComment(w http.ResponseWriter, r *http.Request) {
 
 	_, err = db.Exec(`INSERT INTO comments (entry_id, user_id, comment) VALUES (?,?,?)`, entry.ID, user.ID, r.FormValue("comment"))
 	checkErr(err)
+	commentCnt[entry.ID] += 1
 	http.Redirect(w, r, "/diary/entry/"+strconv.Itoa(entry.ID), http.StatusSeeOther)
 }
 
@@ -821,6 +806,18 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		var s string
 		checkErr(rows.Scan(&id, &s))
 		salts[id] = s
+	}
+	rows.Close()
+
+	// コメント数を持っておく
+	rows, err := db.Query(`SELECT entry_id, COUNT(*) AS c FROM comments GROUP BY entry_id`)
+	if err != sql.ErrNoRows {
+		checkErr(err)
+	}
+	for rows.Next() {
+		var entry_id, count int
+		checkErr(rows.Scan(&entry_id, &count))
+		commentCnt[entry_id] = count
 	}
 	rows.Close()
 }

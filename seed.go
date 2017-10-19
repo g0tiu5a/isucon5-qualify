@@ -152,10 +152,6 @@ func InitializeRelations() {
 	}
 }
 
-func InitializeEntries() {
-
-}
-
 func LoadRedisAof() {
 	// Clear redis caches
 	err := exec.Command("redis-cli", "flushall").Run()
@@ -214,7 +210,6 @@ func main() {
 	}
 	InitializeFootprints()
 	// InitializeRelations()
-	InitializeEntries()
 	err = exec.Command("redis-cli", "config", "set", "appendonly", "no").Run()
 	if err != nil {
 		log.Fatalf("Failed to disable appendonly")
@@ -225,10 +220,10 @@ func main() {
 		fmt.Printf("[footprints:%d] %v\n", idx, fp)
 	}
 
-	friends := FetchRelations(1995)
-	for idx, friend := range friends {
-		fmt.Printf("[relations:%d] %v\n", idx, friend)
-	}
+	// friends := FetchRelations(1995)
+	// for idx, friend := range friends {
+	// 	fmt.Printf("[relations:%d] %v\n", idx, friend)
+	// }
 
 	LoadRedisAof()
 }
